@@ -1,0 +1,69 @@
+# PyTorch OCR 모델 설정 파일
+
+# 모델 경로 및 기본 설정
+model:
+  name: "ocr_model_v1"
+  type: "pytorch"  # pytorch, onnx, tensorrt
+  version: "1.0.0"
+  
+  # 모델 파일 경로
+  model_path: "models/ocr_model.pt"  # .pt, .pth, .onnx
+  config_path: "models/model_config.json"  # 선택적
+  
+  # 입력 이미지 설정
+  input:
+    image_size: [640, 640]  # [height, width]
+    channels: 3  # RGB
+    normalize: true
+    mean: [0.485, 0.456, 0.406]  # ImageNet 평균
+    std: [0.229, 0.224, 0.225]   # ImageNet 표준편차
+  
+  # 출력 후처리 설정
+  output:
+    confidence_threshold: 0.5
+    nms_threshold: 0.4
+    max_detections: 1000
+
+# GPU/CPU 설정
+device:
+  auto_detect: true  # 자동 GPU/CPU 감지
+  preferred: "cuda"  # cuda, cpu, mps(Apple Silicon)
+  gpu_id: 0         # 다중 GPU 환경에서 사용할 GPU ID
+  memory_fraction: 0.8  # GPU 메모리 사용 비율
+
+# 성능 최적화 설정
+optimization:
+  enable_mixed_precision: false  # FP16 사용 여부
+  compile_model: false  # torch.compile 사용 (PyTorch 2.0+)
+  batch_size: 1  # 배치 크기
+  num_workers: 0  # 데이터 로더 워커 수
+  
+# 추론 설정
+inference:
+  warmup_iterations: 5  # 모델 워밍업 횟수
+  max_batch_size: 8     # 최대 배치 크기
+  timeout_seconds: 30   # 추론 타임아웃
+  
+# 모니터링 및 로깅
+monitoring:
+  log_inference_time: true
+  log_memory_usage: true
+  enable_profiling: false
+  
+# 모델 백업 및 버전 관리
+backup:
+  enabled: false
+  backup_dir: "models/backups"
+  keep_versions: 5
+
+# 개발/디버그 설정
+debug:
+  save_intermediate_tensors: false
+  enable_grad: false  # 추론 시 gradient 계산 비활성화
+  deterministic: false  # 재현 가능한 결과 (성능 저하 가능)
+  
+# Fallback 설정
+fallback:
+  enabled: true
+  method: "tesseract"  # tesseract, mock
+  tesseract_config: "--oem 3 --psm 6" 

@@ -1,0 +1,68 @@
+# 이미지 전처리 설정 파일
+
+# 전처리 파이프라인 활성화 여부
+enabled: true
+
+# 전처리 단계 순서 및 설정
+pipeline:
+  # 1. 이미지 리사이징 (선택적)
+  resize:
+    enabled: true
+    max_width: 2048
+    max_height: 2048
+    maintain_aspect_ratio: true
+  
+  # 2. 그레이스케일 변환
+  grayscale:
+    enabled: true
+  
+  # 3. 노이즈 제거
+  denoise:
+    enabled: true
+    method: "gaussian_blur"  # gaussian_blur, median_blur, bilateral
+    kernel_size: 3
+    sigma: 1.0
+  
+  # 4. 이미지 회전 보정
+  rotation_correction:
+    enabled: true
+    method: "hough_lines"  # hough_lines, contour_based
+    angle_threshold: 0.5   # 최소 보정 각도 (도)
+    max_angle: 45         # 최대 허용 기울기 (도)
+  
+  # 5. 이진화
+  binarization:
+    enabled: true
+    method: "adaptive_threshold"  # otsu, adaptive_threshold, manual
+    block_size: 11        # adaptive threshold용
+    c_constant: 2         # adaptive threshold용
+    threshold_value: 127  # manual threshold용
+  
+  # 6. 모폴로지 연산 (노이즈 제거)
+  morphology:
+    enabled: true
+    operation: "opening"  # opening, closing, gradient
+    kernel_size: 2
+    iterations: 1
+  
+  # 7. 왜곡 보정 (고급)
+  distortion_correction:
+    enabled: false
+    method: "perspective_transform"
+    auto_detect: true
+
+# 품질 검증 설정
+quality_check:
+  enabled: true
+  min_contrast: 0.3      # 최소 대비값
+  max_blur_variance: 100 # 최대 블러 분산값 (라플라시안)
+
+# 성능 설정
+performance:
+  use_gpu: false         # OpenCV GPU 가속 사용 여부
+  max_image_size: 10485760  # 최대 이미지 크기 (10MB)
+  
+# 디버그 설정
+debug:
+  save_intermediate_steps: false  # 중간 단계 이미지 저장
+  output_dir: "debug_preprocessing" 

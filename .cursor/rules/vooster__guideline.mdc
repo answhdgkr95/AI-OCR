@@ -1,0 +1,527 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+# Internal AI OCR Server: Code Guidelines
+
+## 1. Project Overview
+
+This document outlines the coding standards and best practices for the "Internal AI OCR Server" project. This solution provides a high-precision OCR inference and training pipeline with a web-based management console, designed for a financial institution's isolated internal network. The core architecture leverages Python 3.10 with FastAPI for REST APIs, PyTorch for AI models, Redis for caching, PostgreSQL for metadata, and Nginx as a reverse proxy. The entire system is containerized using Docker and orchestrated with Kubernetes, ensuring scalability, reliability, and maintainability within a closed network environment.
+
+**Key Architectural Decisions:**
+*   **Backend:** FastAPI for high-performance, asynchronous REST APIs.
+*   **AI/ML:** PyTorch for deep learning models, supporting incremental learning.
+*   **Data Storage:** PostgreSQL for relational data and Redis for caching and messaging.
+*   **Deployment:** Docker and Kubernetes for consistent, scalable, and resilient deployments.
+*   **Web Server:** Nginx for efficient reverse proxying and load balancing.
+*   **Frontend:** React for a modern, component-based user interface.
+
+## 2. Core Principles
+
+1.  **Readability and Maintainability:** Code MUST be clear, concise, and easy to understand for future developers.
+2.  **Performance and Efficiency:** Code MUST be optimized for speed and resource utilization, especially for OCR inference and training.
+3.  **Security and Compliance:** All code MUST adhere to financial industry security standards and internal network regulations.
+4.  **Modularity and Scalability:** Components MUST be loosely coupled and designed for independent scaling and evolution.
+5.  **Testability and Reliability:** Code MUST be easily testable, with comprehensive tests ensuring functional correctness and robustness.
+
+## 3. Language-Specific Guidelines
+
+### Python (FastAPI, PyTorch)
+
+#### File Organization and Directory Structure
+
+The project follows a Domain-Driven and Layered Architecture approach.
+
+*   **MUST:** Organize code into domain-specific services (`ocr_service`, `preprocessing_service`, `training_service`, `user_service`).
+*   **MUST:** Separate concerns into distinct layers: `api` (presentation), `services` (business logic), `repositories` (data access), `infrastructure` (external integrations, configurations).
+*   **MUST:** Place shared utilities and common types in a `shared/` or `utils/` directory.
+
+```
+/
+├── api/
+│   ├── v1/
+│   │   ├── endpoints/          # FastAPI router definitions
+│   │   │   ├── ocr.py
+│   │   │   └── ...
+│   │   ├── schemas/            # Pydantic models for request/response
+│   │   │   ├── ocr.py
+│   │   │   └── ...
+│   │   └── dependencies.py     # FastAPI dependency injection
+│   └── main.py                 # Main FastAPI application entry point
+├── services/
+│   ├── ocr_service/            # Business logic for OCR operations
+│   │   ├── __init__.py
+│   │   ├── ocr_processor.py
+│   │   └── ...
+│   ├── preprocessing_service/  # Business logic for image preprocessing
+│   │   ├── __init__.py
+│   │   └── image_transformer.py
+│   │   └── ...
+│   └── ...
+├── repositories/
+│   ├── __init__.py
+│   ├── ocr_repository.py       # Data access for OCR metadata
+│   ├── user_repository.py      # Data access for user management
+│   └── ...
+├── infrastructure/
+│   ├── __init__.py
+│   ├── database.py             # SQLAlchemy engine, session management
+│   ├── redis_client.py         # Redis connection and utility
+│   ├── sso_integration.py      # SSO/LDAP integration
+│   └── ...
+├── shared/
+│   ├── __init__.py
+│   ├── constants.py            # Global constants
+│   ├── exceptions.py           # Custom exceptions
+│   ├── logger.py               # Centralized logging configuration
+│   └── utils.py                # General utility functions
+├── tests/                      # Unit and integration tests
+│   ├── unit/
+│   ├── integration/
+│   └── conftest.py
+├── configs/                    # Environment-specific configurations
+│   ├── __init__.py
+│   ├── settings.py             # Pydantic BaseSettings for env vars
+│   └── config.ini
+└── Dockerfile
+```
+
+#### Import/Dependency Management
+
+*   **MUST:** Use absolute imports relative to the project root.
+*   **MUST:** Group imports into standard library, third-party, and local application imports, separated by blank lines.
+*   **MUST:** Use `from ... import ...` for specific objects rather than `import ...` for modules, unless importing a module for its side effects (rare).
+*   **MUST:** Utilize FastAPI's Dependency Injection for managing service and repository instances.
+
+```python
+# MUST: Correct import grouping and absolute imports
+import os
+import logging
+from typing import Optional
+
+import torch
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from services.ocr_service.ocr_processor import OCRProcessor
+from repositories.ocr_repository import OCRRepository
+from shared.exceptions import OCRProcessingError
+
+# Rationale: Improves readability, avoids circular dependencies, and clearly
+# distinguishes between different types of imports.
+```
+
+```python
+# MUST NOT: Incorrect import style
+import services.ocr_service.ocr_processor
+from . import ocr_processor # Relative import in top-level files
+from services.ocr_service import * # Wildcard import
+
+# Rationale: Wildcard imports pollute the namespace and make it hard to track
+# dependencies. Relative imports are fine within a package but should be avoided
+# at the top level for clarity.
+```
+
+#### Error Handling Patterns
+
+*   **MUST:** Raise specific custom exceptions for business logic errors.
+*   **MUST:** Use FastAPI's `HTTPException` for API-level errors, mapping them to appropriate HTTP status codes.
+*   **MUST:** Log exceptions with sufficient detail (stack trace, relevant context) using the centralized logger.
+*   **MUST:** Implement global exception handlers in `main.py` or a dedicated module to catch unhandled exceptions and return consistent error responses.
+
+```python
+# MUST: Correct Error Handling
+from fastapi import HTTPException, status
+from shared.exceptions import ImageProcessingError
+from shared.logger import get_logger
+
+logger = get_logger(__name__)
+
+async def process_image_for_ocr(image_data: bytes):
+    try:
+        # Simulate image processing
+        if not image_data:
+            raise ImageProcessingError("Input image data is empty.")
+        # ... actual processing logic ...
+        return {"result": "processed"}
+    except ImageProcessingError as e:
+        logger.error(f"Image processing failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Image processing error: {e}"
+        )
+    except Exception as e:
+        logger.critical(f"An unexpected error occurred during image processing: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected server error occurred."
+        )
+
+# Rationale: Specific exceptions provide clear context for business logic failures.
+# HTTPException ensures proper API responses. Logging critical errors helps debugging.
+```
+
+```python
+# MUST NOT: Poor Error Handling
+def process_image_for_ocr_bad(image_data: bytes):
+    try:
+        # ... processing logic ...
+        pass
+    except: # Bare except
+        print("An error occurred!") # Print instead of log
+        return {"error": "Failed"} # Inconsistent error response
+
+# Rationale: Bare excepts hide critical issues. Printing to console is not
+# suitable for production. Inconsistent error responses make API consumption difficult.
+```
+
+### React (Frontend)
+
+#### File Organization and Directory Structure
+
+*   **MUST:** Organize components by feature or domain, with subdirectories for related components, hooks, and styles.
+*   **MUST:** Use a `components/` directory for reusable, generic UI components.
+*   **MUST:** Place global styles, utility functions, and configuration in a `styles/`, `utils/`, `config/` directory respectively.
+
+```
+/frontend/
+├── src/
+│   ├── App.tsx
+│   ├── main.tsx
+│   ├── assets/                 # Static assets (images, fonts)
+│   ├── components/             # Reusable UI components (Button, Modal)
+│   │   ├── Button/
+│   │   │   ├── Button.tsx
+│   │   │   └── Button.module.css
+│   │   └── ...
+│   ├── features/               # Feature-specific components and logic
+│   │   ├── ocr-viewer/
+│   │   │   ├── OcrViewer.tsx
+│   │   │   ├── OcrViewer.module.css
+│   │   │   ├── OcrViewer.types.ts
+│   │   │   └── useOcrData.ts   # Custom hook
+│   │   ├── model-management/
+│   │   │   └── ...
+│   │   └── ...
+│   ├── hooks/                  # Global custom hooks
+│   ├── services/               # API client and data fetching logic
+│   │   ├── api.ts
+│   │   └── ocrService.ts
+│   ├── store/                  # State management (e.g., Zustand, React Context)
+│   ├── styles/                 # Global styles, themes
+│   ├── utils/                  # Helper functions
+│   └── types/                  # Global TypeScript types
+```
+
+#### Import/Dependency Management
+
+*   **MUST:** Use absolute imports configured via `tsconfig.json` (`baseUrl`) to avoid long relative paths.
+*   **MUST:** Group imports similarly to Python: React/library imports, third-party, local components/modules.
+
+```typescript
+// MUST: Correct import style in React
+import React from 'react';
+import { useQuery } from '@tanstack/react-query'; // Third-party library
+import { Button } from 'components/Button/Button'; // Reusable component
+import { fetchOcrResult } from 'services/ocrService'; // API service
+import { OcrResult } from 'types/ocr'; // Global type
+
+// Rationale: Absolute imports simplify paths, and grouping improves readability.
+```
+
+#### Error Handling Patterns
+
+*   **MUST:** Use `try...catch` blocks for asynchronous operations (e.g., API calls) and handle errors gracefully.
+*   **MUST:** Display user-friendly error messages in the UI.
+*   **MUST:** Log client-side errors to the console or an error monitoring service (if applicable).
+*   **MUST:** Utilize React Query's error handling for data fetching.
+
+```typescript
+// MUST: Correct Error Handling in React
+import React, { useState } from 'react';
+import { fetchOcrResult } from 'services/ocrService';
+
+interface OcrFormProps {
+  onSuccess: (result: string) => void;
+}
+
+const OcrForm: React.FC<OcrFormProps> = ({ onSuccess }) => {
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!file) {
+      setError("Please select a file.");
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await fetchOcrResult(file);
+      onSuccess(result.text);
+    } catch (err) {
+      console.error("Failed to process OCR:", err); // Log to console
+      setError("Failed to process document. Please try again."); // User-friendly message
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+      <button type="submit" disabled={isLoading}>
+        {isLoading ? "Processing..." : "Submit for OCR"}
+      </button>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+    </form>
+  );
+};
+
+// Rationale: Provides clear user feedback, logs technical details, and manages loading states.
+```
+
+## 4. Code Style Rules
+
+### MUST Follow:
+
+*   **Consistent Naming Conventions:**
+    *   **Python:**
+        *   Modules: `snake_case` (e.g., `ocr_processor.py`)
+        *   Classes: `PascalCase` (e.g., `OCRProcessor`)
+        *   Functions/Methods/Variables: `snake_case` (e.g., `process_image`, `image_data`)
+        *   Constants: `UPPER_SNAKE_CASE` (e.g., `MAX_RETRIES`)
+    *   **React/TypeScript:**
+        *   Components: `PascalCase` (e.g., `OcrViewer`, `Button`)
+        *   Functions/Variables: `camelCase` (e.g., `handleSubmit`, `isLoading`)
+        *   Interfaces/Types: `PascalCase` (e.g., `OcrResult`, `ImageProps`)
+        *   CSS Modules: `kebab-case` for filenames, `camelCase` for class names.
+    *   **Rationale:** Ensures immediate understanding of identifier type and consistent codebase navigation.
+
+*   **Type Hinting (Python) / TypeScript (React):**
+    *   **MUST:** Use type hints for all function arguments, return values, and complex variables in Python.
+    *   **MUST:** Use TypeScript for all React components, hooks, and utility functions, defining clear interfaces for props and data structures.
+    *   **Rationale:** Improves code clarity, enables static analysis, reduces runtime errors, and enhances IDE support.
+
+```python
+# MUST: Python Type Hinting
+from typing import List, Dict, Any, Optional
+
+def process_document(image_path: str, options: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Processes an image document to extract text and bounding boxes."""
+    # ... implementation ...
+    return [{"text": "Hello", "bbox": [0,0,10,10]}]
+
+# Rationale: Clear input/output types.
+```
+
+```typescript
+// MUST: TypeScript for React
+interface OcrResult {
+  text: string;
+  confidence: number;
+  boundingBoxes: Array<{ x1: number; y1: number; x2: number; y2: number }>;
+}
+
+interface OcrViewerProps {
+  imageUrl: string;
+  ocrData: OcrResult;
+  onEdit: (data: OcrResult) => void;
+}
+
+const OcrViewer: React.FC<OcrViewerProps> = ({ imageUrl, ocrData, onEdit }) => {
+  // ... component logic ...
+};
+
+// Rationale: Defines clear contracts for data and props.
+```
+
+*   **Docstrings (Python) / JSDoc (React):**
+    *   **MUST:** Provide clear, concise docstrings for all modules, classes, methods, and complex functions explaining their purpose, arguments, and return values.
+    *   **Rationale:** Essential for code documentation, maintainability, and automatic documentation generation.
+
+*   **Small, Focused Functions/Components:**
+    *   **MUST:** Keep functions and components small, performing a single, well-defined task.
+    *   **Rationale:** Improves readability, testability, reusability, and reduces complexity.
+
+*   **Meaningful Variable Names:**
+    *   **MUST:** Use descriptive variable names that clearly indicate their purpose and content. Avoid single-letter variables unless for loop iterators (`i, j, k`).
+    *   **Rationale:** Enhances code readability and reduces cognitive load.
+
+### MUST NOT Do:
+
+*   **Making Huge, Multi-Responsibility Modules in Single File:**
+    *   **MUST NOT:** Create files or modules that handle multiple unrelated concerns (e.g., a single `utils.py` with database, string, and image processing functions).
+    *   **Rationale:** Violates Single Responsibility Principle, makes files difficult to navigate, test, and maintain.
+
+*   **Define Complex State Management Pattern:**
+    *   **MUST NOT:** Introduce overly complex or custom state management solutions in React unless absolutely necessary and justified. Prefer standard React Context, `useState`/`useReducer`, or lightweight libraries like Zustand.
+    *   **Rationale:** Increases learning curve, introduces unnecessary boilerplate, and can lead to performance issues if not carefully managed.
+
+*   **Common Mistakes in the Specific Tech Stack:**
+    *   **MUST NOT (Python/FastAPI):** Perform blocking I/O operations directly within FastAPI endpoints without `await`ing them or offloading to a background task. This blocks the event loop.
+    *   **MUST NOT (Python/PyTorch):** Load large models or perform heavy computations synchronously on the main thread during API requests. Use background workers or dedicated model serving processes.
+    *   **MUST NOT (React):** Directly manipulate the DOM using `document.getElementById` or similar methods. Use React's state and props for UI updates.
+    *   **MUST NOT (React):** Create deeply nested component trees without proper state lifting or context, leading to "prop drilling."
+    *   **Rationale:** These anti-patterns lead to performance bottlenecks, unmaintainable code, and violate the core principles of the frameworks.
+
+## 5. Architecture Patterns
+
+### Component/Module Structure Guidelines
+
+*   **Layered Architecture:**
+    *   **Presentation Layer (`api/`):** Handles HTTP requests, input validation (Pydantic), and serialization. Delegates business logic to the service layer.
+    *   **Service Layer (`services/`):** Contains core business logic, orchestrates operations across multiple repositories, and applies domain rules.
+    *   **Data Access Layer (`repositories/`):** Abstracts database interactions (SQLAlchemy ORM), providing methods for CRUD operations.
+    *   **Infrastructure Layer (`infrastructure/`):** Manages external integrations (DB connections, Redis, SSO), configuration, and low-level utilities.
+    *   **Rationale:** Enforces separation of concerns, improving maintainability, testability, and allowing independent evolution of layers.
+
+*   **Domain-Driven Design (DDD) Principles:**
+    *   **MUST:** Organize code primarily by domain (e.g., `ocr`, `preprocessing`, `training`).
+    *   **MUST:** Define clear boundaries and responsibilities for each domain.
+    *   **Rationale:** Aligns code structure with business capabilities, making it easier to understand and evolve complex systems.
+
+### Data Flow Patterns
+
+*   **Request-Response Flow (FastAPI):**
+    *   Client sends HTTP request to FastAPI endpoint.
+    *   FastAPI validates input using Pydantic schemas.
+    *   Endpoint calls appropriate service layer method.
+    *   Service layer interacts with repositories, external services (e.g., PyTorch model server), and caches (Redis).
+    *   Service returns data to endpoint, which serializes it back to the client.
+    *   **Rationale:** Standard, predictable flow for web applications.
+
+*   **Asynchronous Processing (Python):**
+    *   **MUST:** Use `async/await` for I/O-bound operations (database calls, external API requests, Redis).
+    *   **MUST:** Offload CPU-bound tasks (e.g., heavy image processing, model inference) to a separate thread pool (`run_in_threadpool`) or dedicated background workers/services (e.g., PyTorch Model Server).
+    *   **Rationale:** Prevents blocking the event loop, ensuring high concurrency and responsiveness for the FastAPI server.
+
+```python
+# MUST: Asynchronous I/O and CPU-bound task offloading
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
+
+from services.ocr_service.ocr_processor import OCRProcessor
+from repositories.ocr_repository import OCRRepository
+
+router = APIRouter()
+executor = ThreadPoolExecutor(max_workers=4) # For CPU-bound tasks
+
+async def get_ocr_processor() -> OCRProcessor:
+    # Dependency injection for service
+    return OCRProcessor(OCRRepository())
+
+@router.post("/process-image")
+async def process_image_endpoint(
+    image_data: bytes,
+    ocr_processor: OCRProcessor = Depends(get_ocr_processor)
+):
+    # Asynchronous I/O (e.g., saving image to storage, Redis cache lookup)
+    # await some_async_storage_client.save(image_data)
+
+    # Offload CPU-bound OCR processing to a thread pool
+    try:
+        # run_in_threadpool is a common pattern for FastAPI to offload blocking calls
+        # For heavy ML models, a separate model server is preferred as per TRD
+        result = await asyncio.get_event_loop().run_in_executor(
+            executor, ocr_processor.perform_ocr, image_data
+        )
+        return {"status": "success", "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+# Rationale: Ensures FastAPI remains non-blocking for I/O and offloads intensive
+# CPU work to prevent blocking the event loop, improving concurrency.
+# For actual PyTorch inference, the TRD specifies a separate PyTorch Model Server.
+```
+
+### State Management Conventions (React)
+
+*   **Local Component State:**
+    *   **MUST:** Use `useState` and `useReducer` for state managed entirely within a single component.
+    *   **Rationale:** Simple and efficient for isolated component state.
+
+*   **Context API for Global/Shared State:**
+    *   **MUST:** Use React Context for state that needs to be accessed by multiple components at different levels of the component tree, but is not frequently updated (e.g., user authentication status, theme).
+    *   **Rationale:** Avoids prop drilling for less frequently updated global state.
+
+*   **React Query for Server State:**
+    *   **MUST:** Use `@tanstack/react-query` for managing server-side data (fetching, caching, invalidation, mutations).
+    *   **Rationale:** Provides robust caching, automatic re-fetching, background updates, and simplifies complex data fetching patterns.
+
+*   **Zustand (Optional) for Complex Global State:**
+    *   **MAY:** Consider Zustand for more complex global application state that is frequently updated or requires more structured management than Context API.
+    *   **Rationale:** Provides a lightweight, performant, and easy-to-use alternative to Redux for larger global state needs.
+
+### API Design Standards (FastAPI)
+
+*   **RESTful Principles:**
+    *   **MUST:** Use clear, descriptive, plural nouns for resource paths (e.g., `/api/v1/documents`, `/api/v1/models`).
+    *   **MUST:** Use standard HTTP methods (GET, POST, PUT, DELETE) for their intended actions.
+    *   **MUST:** Return appropriate HTTP status codes (200 OK, 201 Created, 204 No Content, 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 500 Internal Server Error).
+    *   **Rationale:** Ensures consistency, discoverability, and ease of integration for API consumers.
+
+*   **Versioning:**
+    *   **MUST:** Use URL-based versioning (e.g., `/api/v1/ocr`).
+    *   **Rationale:** Allows for backward compatibility and smooth API evolution.
+
+*   **Input/Output Validation:**
+    *   **MUST:** Use Pydantic models for request body validation and response serialization.
+    *   **Rationale:** Ensures data integrity, provides automatic documentation (OpenAPI), and simplifies data handling.
+
+```python
+# MUST: FastAPI Pydantic Schemas and API Design
+from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel, Field
+from typing import List, Optional
+
+router = APIRouter(prefix="/api/v1/ocr", tags=["OCR"])
+
+class OcrRequest(BaseModel):
+    image_base64: str = Field(..., description="Base64 encoded image data.")
+    document_type: Optional[str] = Field(None, description="Type of document for specialized processing.")
+
+class BoundingBox(BaseModel):
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+
+class OcrResultItem(BaseModel):
+    text: str
+    confidence: float
+    bbox: BoundingBox
+
+class OcrResponse(BaseModel):
+    extracted_text: str
+    items: List[OcrResultItem]
+    processing_time_ms: float
+
+@router.post("/", response_model=OcrResponse, status_code=status.HTTP_200_OK)
+async def perform_ocr(request: OcrRequest):
+    """
+    Performs OCR on the provided image data.
+    """
+    # Simulate OCR processing
+    if not request.image_base64:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image data is required.")
+
+    # In a real scenario, call OCR service here
+    # ocr_service.process_image(request.image_base64, request.document_type)
+
+    mock_result = OcrResponse(
+        extracted_text="Sample OCR Text",
+        items=[
+            OcrResultItem(text="Sample", confidence=0.99, bbox=BoundingBox(x1=10, y1=10, x2=50, y2=20)),
+            OcrResultItem(text="OCR", confidence=0.98, bbox=BoundingBox(x1=60, y1=10, x2=90, y2=20))
+        ],
+        processing_time_ms=150.5
+    )
+    return mock_result
+
+# Rationale: Clear endpoint, Pydantic for validation/serialization,
+# descriptive names, and appropriate HTTP status codes.
+```
