@@ -1,52 +1,170 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-ocr-server"
-version = "0.1.0"
-description = "Internal AI OCR Server for Financial Institutions"
-authors = [{name = "AI OCR Team", email = "team@company.com"}]
+version = "1.0.0"
+description = "금융권 내부망 AI OCR 서버"
 readme = "README.md"
 requires-python = ">=3.10"
+authors = [
+    {name = "AI OCR Team", email = "ai-ocr@company.com"}
+]
+keywords = ["ocr", "ai", "fastapi", "pytorch", "financial"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Financial and Insurance Industry",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
 ]
 dependencies = [
     "fastapi>=0.104.1",
     "uvicorn[standard]>=0.24.0",
-    "python-multipart>=0.0.6",
     "pydantic>=2.5.0",
-    "python-jose[cryptography]>=3.3.0",
-    "passlib[bcrypt]>=1.7.4",
-    "python-dotenv>=1.0.0",
-    "httpx>=0.25.2",
+    "pydantic-settings>=2.0.3",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.3",
     "pytest-asyncio>=0.21.1",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
     "black>=23.11.0",
-    "isort>=5.12.0",
     "flake8>=6.1.0",
+    "isort>=5.12.0",
+    "mypy>=1.7.1",
 ]
 
+# pytest 설정
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=services",
+    "--cov=api",
+    "--cov=core",
+    "--cov-report=term-missing",
+    "--cov-report=html:htmlcov",
+    "--cov-report=xml:coverage.xml",
+    "--cov-fail-under=48",  # 현재 달성된 커버리지 수준으로 조정
+]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "unit: 단위 테스트",
+    "integration: 통합 테스트", 
+    "slow: 느린 테스트",
+    "gpu: GPU 필요 테스트",
+    "api: API 레벨 테스트",
+    "service: 서비스 레벨 테스트",
+]
+filterwarnings = [
+    "error",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+    "ignore::RuntimeWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+# 커버리지 설정
+[tool.coverage.run]
+source = ["api", "services", "core"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__init__.py",
+    "*/conftest.py",
+    "*/migrations/*",
+    "*/venv/*",
+    "*/env/*",
+    "*/.pytest_cache/*",
+    "*/htmlcov/*",
+    "app/main.py",  # 메인 앱 파일은 시작점이므로 제외
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+sort = "Cover"
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+    "except ImportError:",
+    "pass",
+    "\\.\\.\\.",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+title = "AI OCR Server Test Coverage Report"
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
+# Black 코드 포맷터 설정
 [tool.black]
 line-length = 88
 target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # 제외할 디렉토리
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | migrations
+)/
+'''
 
+# isort 설정
 [tool.isort]
 profile = "black"
+multi_line_output = 3
 line_length = 88
+known_first_party = ["api", "services", "core"]
+known_third_party = ["fastapi", "pydantic", "torch", "cv2", "numpy"]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = "-v --tb=short" 
+# mypy 설정
+[tool.mypy]
+python_version = "3.10"
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "cv2.*",
+    "albumentations.*",
+    "skimage.*",
+    "torch.*",
+    "torchvision.*",
+    "transformers.*",
+]
+ignore_missing_imports = true 

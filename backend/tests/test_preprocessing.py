@@ -5,16 +5,15 @@
 import pytest
 import numpy as np
 import cv2
-import io
 from unittest.mock import patch, MagicMock
 
 from services.preprocessing_service import (
-    PreprocessingConfig, BasePreprocessor, ImageQualityChecker
+    PreprocessingConfig, ImageQualityChecker
 )
 from services.image_processors import (
     ResizeProcessor, GrayscaleProcessor, DenoiseProcessor,
     RotationCorrectionProcessor, BinarizationProcessor,
-    MorphologyProcessor
+    MorphologyProcessor, DistortionCorrectionProcessor
 )
 from services.image_preprocessing_pipeline import (
     ImagePreprocessingPipeline, PreprocessingService
@@ -164,16 +163,92 @@ class TestImageProcessors:
         assert len(unique_values) <= 2
     
     def test_morphology_processor_opening(self):
-        """열림 연산 테스트"""
-        config = {"operation": "opening", "kernel_size": 3, "iterations": 1}
+        """모폴로지 연산 프로세서 테스트 (opening)"""
+        config = {"operation": "opening", "kernel_size": 3}
         processor = MorphologyProcessor(config)
         
-        # 이진 이미지 생성
-        binary_image = np.zeros((100, 100), dtype=np.uint8)
-        cv2.rectangle(binary_image, (20, 20), (80, 80), 255, -1)
+        # 노이즈가 있는 이진 이미지 생성
+        image = np.zeros((100, 100), dtype=np.uint8)
+        cv2.rectangle(image, (30, 30), (70, 70), 255, -1)
+        # 작은 노이즈 추가
+        image[20, 20] = 255
+        image[21, 21] = 255
         
-        result = processor.process(binary_image)
-        assert result.shape == binary_image.shape
+        processed = processor.process(image)
+        assert processed is not None
+        assert processed.shape == image.shape
+    
+    def test_distortion_correction_processor(self):
+        """왜곡 보정 프로세서 테스트"""
+        config = {"method": "perspective_transform", "auto_detect": True}
+        processor = DistortionCorrectionProcessor(config)
+        
+        # 테스트 이미지 생성
+        test_image = self.create_test_image(200, 150)
+        processed = processor.process(test_image)
+        
+        assert processed is not None
+        assert processed.shape == test_image.shape
+    
+    def test_distortion_correction_disabled(self):
+        """왜곡 보정 비활성화 테스트"""
+        config = {"auto_detect": False}
+        processor = DistortionCorrectionProcessor(config)
+        
+        test_image = self.create_test_image(100, 100)
+        processed = processor.process(test_image)
+        
+        # 처리가 수행되지 않고 원본 반환
+        np.testing.assert_array_equal(processed, test_image)
+    
+    def test_distortion_correction_unknown_method(self):
+        """왜곡 보정 알 수 없는 방법 테스트"""
+        config = {"method": "unknown_method", "auto_detect": True}
+        processor = DistortionCorrectionProcessor(config)
+        
+        test_image = self.create_test_image(100, 100)
+        processed = processor.process(test_image)
+        
+        # 알 수 없는 방법이므로 원본 반환
+        np.testing.assert_array_equal(processed, test_image)
+    
+    def test_resize_processor_no_aspect_ratio(self):
+        """리사이징 종횡비 미유지 테스트"""
+        config = {
+            "max_width": 100, 
+            "max_height": 50, 
+            "maintain_aspect_ratio": False
+        }
+        processor = ResizeProcessor(config)
+        
+        large_image = self.create_test_image(400, 300)
+        resized = processor.process(large_image)
+        
+        assert resized.shape[1] == 100  # width
+        assert resized.shape[0] == 50   # height
+    
+    def test_rotation_correction_unknown_method(self):
+        """회전 보정 알 수 없는 방법 테스트"""
+        config = {"method": "unknown_method"}
+        processor = RotationCorrectionProcessor(config)
+        
+        test_image = self.create_test_image(100, 100, color=False)
+        processed = processor.process(test_image)
+        
+        # 알 수 없는 방법이므로 원본 반환
+        np.testing.assert_array_equal(processed, test_image)
+    
+    def test_denoise_processor_bilateral(self):
+        """Bilateral 필터 노이즈 제거 테스트"""
+        config = {"method": "bilateral_filter"}
+        processor = DenoiseProcessor(config)
+        
+        # 노이즈가 있는 그레이스케일 이미지
+        noisy_image = self.create_test_image(100, 100, color=False)
+        processed = processor.process(noisy_image)
+        
+        assert processed is not None
+        assert processed.shape == noisy_image.shape
 
 
 class TestPreprocessingPipeline:

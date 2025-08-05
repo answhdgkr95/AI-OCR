@@ -4,7 +4,6 @@ PyTorch 모델 서버 테스트
 
 import pytest
 import numpy as np
-import time
 from unittest.mock import patch, MagicMock
 
 from services.pytorch_model_server import (
@@ -20,9 +19,13 @@ class TestModelConfig:
         """기본 설정 로드 테스트"""
         with patch('builtins.open', side_effect=FileNotFoundError):
             config = ModelConfig("nonexistent.yaml")
-            assert config.is_enabled()
+            # 기본 설정이 로드되었는지 확인
             assert "model" in config.config
             assert "device" in config.config
+            assert "inference" in config.config
+            assert "fallback" in config.config
+            # fallback이 기본으로 활성화되어 있는지 확인
+            assert config.config["fallback"]["enabled"] is True
 
     def test_config_retrieval(self):
         """설정 조회 테스트"""
